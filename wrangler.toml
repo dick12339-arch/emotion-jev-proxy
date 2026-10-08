@@ -1,0 +1,7 @@
+name = "emotion-jev-proxy"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
+
+# 部署時會用這個，不用改
+[observability]
+enabled = true
