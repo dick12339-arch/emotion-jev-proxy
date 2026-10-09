@@ -22,5 +22,13 @@ npx wrangler secret put OPENROUTER_API_KEY
 把部署後的網址 `https://emotion-jev-proxy.xxx.workers.dev` 貼回轉譯器的 **代理模式 URL** 欄位。
 
 支援兩種模式：
-- 模式A (安全)：Key 藏在 Worker 環境變數，前端不傳 key
-- 模式B (測試)：前端 POST body 帶 `apiKey`
+- 模式A (安全)：Key 藏在 Worker 環境變數，前端不傳 key（有設環境變數時一律優先使用）
+- 模式B (測試)：前端 POST body 帶 `apiKey`（僅在 Worker 沒設環境變數時使用）
+
+## 選用環境變數
+- `DEFAULT_MODEL`：前端沒傳 `model` 時使用的模型 ID，未設定則用 `openrouter/auto`
+
+## POST body 格式
+```json
+{ "messages": [{ "role": "user", "content": "你好" }], "model": "可省略", "temperature": 0.3, "max_tokens": 800 }
+```
