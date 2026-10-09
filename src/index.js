@@ -10,7 +10,7 @@ const FREE_MODELS = [
   { id: 'google/gemma-4-26b-a4b-it:free', label: 'Gemma 4 26B｜尖峰時段可能忙碌' },
 ];
 const DEFAULT_MODEL = FREE_MODELS[0].id;
-const MAX_TOKENS_CAP = 1500;
+const MAX_TOKENS_CAP = 4000; // 免費模型會先思考再回答，額度要留足
 
 const PAGE = String.raw`<!doctype html>
 <html lang="zh-Hant">
@@ -164,7 +164,7 @@ select:focus{outline:3px solid var(--rose);outline-offset:2px}
     fetch(location.pathname, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: model, temperature: 0.7, max_tokens: 900,
+      body: JSON.stringify({ model: model, temperature: 0.7, max_tokens: 3000,
         messages: [{ role: 'system', content: sys }, { role: 'user', content: user }] })
     }).then(function(r){ return r.json().catch(function(){ return { error: '伺服器回傳格式錯誤（HTTP ' + r.status + '）' }; }); })
       .then(function(d){
@@ -173,7 +173,7 @@ select:focus{outline:3px solid var(--rose);outline-offset:2px}
           throw new Error(msg);
         }
         var text = d && d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content;
-        if (!text) throw new Error('模型沒有回傳內容，請再按一次，或換一個模型試試。');
+        if (!text) throw new Error('模型這次沒有產出回覆（可能忙碌或想太久），請再按一次，或換一個模型試試。');
         render(parseReplies(text), d.model);
       })
       .catch(function(e){ out.innerHTML = '<p class="err">轉譯失敗：' + esc(e.message) + '</p>'; })
@@ -253,7 +253,9 @@ export default {
           models: fallbackList(pickModel(body.model, env)),
           messages: body.messages,
           temperature: body.temperature ?? 0.3,
-          max_tokens: Math.min(Number(body.max_tokens) || 800, MAX_TOKENS_CAP),
+          max_tokens: Math.min(Number(body.max_tokens) || 3000, MAX_TOKENS_CAP),
+          // 精簡思考、不回傳思考內容，避免額度被思考用光導致回覆空白
+          reasoning: { effort: 'low', exclude: true },
         }),
       });
       const text = await res.text();
