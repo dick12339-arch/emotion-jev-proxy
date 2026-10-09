@@ -19,7 +19,21 @@ npx wrangler secret put OPENROUTER_API_KEY
 ```
 
 ## 直接使用
-打開 Worker 網址就是轉譯器操作頁面；`/health` 可檢查 Key 是否已設定。
+- 打開 Worker 網址就是轉譯器操作頁面
+- `/pad` 是**客服草稿窗**：邊打字邊給邏輯建議（評分、問題點、該先問客人的事、建議改寫），適合開成小視窗放在 LINE 旁邊
+- `/health` 可檢查 Key 是否已設定、目前版本
+
+## 客服草稿窗 /pad
+1. 把客人的訊息貼到「客人說了什麼」（可不填，填了檢查更準）
+2. 在下方打你要回的話，停下來約 1.5 秒會自動檢查
+3. `Ctrl + Enter` 複製草稿，或按「複製建議版」，再貼回 LINE
+4. 電話、Email、8 碼以上數字會在送出前自動遮蔽成 `[電話]` 等
+
+`POST /api/review` 可給其他工具呼叫：
+```json
+{ "draft": "客服草稿", "customer": "客人訊息（可省略）", "model": "可省略" }
+```
+回傳 `{ "review": { "score", "verdict", "issues": [{"type","text"}], "ask": [], "rewrite" }, "model" }`
 
 ## 其他前端怎麼用
 把部署後的網址 `https://emotion-jev-proxy.xxx.workers.dev` 貼回轉譯器的 **代理模式 URL** 欄位。
@@ -40,3 +54,9 @@ npx wrangler secret put OPENROUTER_API_KEY
 ```json
 { "messages": [{ "role": "user", "content": "你好" }], "model": "可省略", "temperature": 0.3, "max_tokens": 800 }
 ```
+
+## 版本資訊
+目前版本與更新紀錄寫在 `src/index.js` 的 `VERSION`、`CHANGELOG`，頁面底部「版本資訊」會自動顯示。
+
+- **v1.1.0（2026-10-09）**：新增客服草稿窗 `/pad` 與 `/api/review` 邏輯檢查；送出前自動遮蔽個資；頁面加上版本資訊
+- **v1.0.0（2026-10-09）**：情緒價值客服轉譯器首版；只用免費模型，忙碌自動備援
