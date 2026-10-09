@@ -2,7 +2,14 @@
 // GET  /  → 轉譯器操作頁面（打開網址就能用）
 // POST /  → 轉送到 OpenRouter（Key 優先使用 Cloudflare 環境變數 OPENROUTER_API_KEY）
 
-const DEFAULT_MODEL = 'openrouter/auto';
+// 只允許免費模型（ID 以 :free 結尾），第一個是預設
+const FREE_MODELS = [
+  { id: 'nvidia/nemotron-3-super-120b-a12b:free', label: 'Nemotron Super｜穩定快速（推薦）' },
+  { id: 'nvidia/nemotron-3-ultra-550b-a55b:free', label: 'Nemotron Ultra｜文筆最好，較慢' },
+  { id: 'google/gemma-4-31b-it:free', label: 'Gemma 4 31B｜尖峰時段可能忙碌' },
+  { id: 'google/gemma-4-26b-a4b-it:free', label: 'Gemma 4 26B｜尖峰時段可能忙碌' },
+];
+const DEFAULT_MODEL = FREE_MODELS[0].id;
 const MAX_TOKENS_CAP = 1500;
 
 const PAGE = String.raw`<!doctype html>
@@ -50,8 +57,9 @@ legend{font-weight:500;margin-bottom:8px;padding:0}
 .bubble{background:var(--bubble);border-radius:20px 20px 6px 20px;padding:14px 18px;max-width:92%;white-space:pre-wrap;font:19px/1.75 "LXGW WenKai TC",serif}
 .copy{margin-top:6px;border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:999px;padding:4px 14px;font:500 14px "Noto Sans TC",sans-serif;cursor:pointer}
 .copy.done{border-color:var(--go);color:var(--go)}
-details{margin-top:18px;color:var(--mute);font-size:14px}
-details input{width:100%;font:inherit;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--cloud);color:var(--ink);margin-top:6px}
+select{width:100%;font:inherit;color:var(--ink);background:var(--cloud);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:18px}
+select:focus{outline:3px solid var(--rose);outline-offset:2px}
+.via{text-align:center;color:var(--mute);font-size:13px;margin:-8px 0 0}
 @media (prefers-reduced-motion: no-preference){ .reply{animation:pop .35s ease-out both} @keyframes pop{from{opacity:0;transform:translateY(8px)}} }
 </style>
 </head>
@@ -88,13 +96,10 @@ details input{width:100%;font:inherit;padding:8px 10px;border-radius:10px;border
       </div>
     </fieldset>
 
-    <button class="go" id="go" type="submit">轉成暖心回覆</button>
+    <label class="field" for="model">AI 模型 <span class="hint">（全部免費，忙碌時會自動換下一個）</span></label>
+    <select id="model">__MODEL_OPTIONS__</select>
 
-    <details>
-      <summary>進階設定</summary>
-      <label for="model">指定模型 ID（留空使用預設）</label>
-      <input id="model" placeholder="例如 google/gemini-2.5-flash">
-    </details>
+    <button class="go" id="go" type="submit">轉成暖心回覆</button>
   </form>
 
   <section id="out" aria-live="polite"></section>
@@ -106,7 +111,7 @@ details input{width:100%;font:inherit;padding:8px 10px;border-radius:10px;border
   var out = document.getElementById('out');
   var btn = document.getElementById('go');
   var modelInput = document.getElementById('model');
-  try { modelInput.value = localStorage.getItem('jev-model') || ''; } catch(e) {}
+  try { var saved = localStorage.getItem('jev-model'); if (saved && modelInput.querySelector('option[value="' + saved + '"]')) modelInput.value = saved; } catch(e) {}
 
   function val(name){ var el = document.querySelector('input[name="' + name + '"]:checked'); return el ? el.value : ''; }
   function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
@@ -121,12 +126,12 @@ details input{width:100%;font:inherit;padding:8px 10px;border-radius:10px;border
     return parts.length ? parts : [t];
   }
 
-  function render(replies){
+  function render(replies, via){
     var tags = ['版本一', '版本二', '版本三', '版本四'];
     out.innerHTML = replies.map(function(r, i){
       return '<div class="reply"><div class="tag">' + (tags[i] || '版本') + '</div><div class="bubble">' + esc(r) +
         '</div><button type="button" class="copy" data-i="' + i + '">複製這則</button></div>';
-    }).join('');
+    }).join('') + (via ? '<p class="via">由 ' + esc(via) + ' 產生</p>' : '');
     out.querySelectorAll('.copy').forEach(function(b){
       b.addEventListener('click', function(){
         var text = replies[+b.dataset.i];
@@ -143,13 +148,13 @@ details input{width:100%;font:inherit;padding:8px 10px;border-radius:10px;border
     var intent = document.getElementById('intent').value.trim();
     var customer = document.getElementById('customer').value.trim();
     if (!intent) { out.innerHTML = '<p class="err">請先在「你想回的意思」打上你要表達的內容。</p>'; return; }
-    var model = modelInput.value.trim();
+    var model = modelInput.value;
     try { localStorage.setItem('jev-model', model); } catch(e) {}
 
     var sys = '你是台灣美容 SPA 店的資深客服，專長是「情緒價值」溝通：先接住客人的情緒，再清楚表達店家的立場或資訊，讓客人感到被重視。' +
-      '請用台灣慣用的繁體中文口語，適合直接貼到 LINE。不要捏造店家沒說過的承諾、價格或優惠，只能潤飾使用者提供的意思。' +
-      '每則回覆 2 到 5 句，不要加稱謂佔位符號（例如【姓名】）。' +
-      '請只輸出 JSON，格式為 {"replies":["版本一","版本二","版本三"]}，三個版本要有明顯不同的寫法。';
+      '請用台灣慣用的繁體中文口語，適合直接貼到 LINE。不要捏造店家沒說過的承諾、時間、價格或優惠，只能潤飾使用者提供的意思。' +
+      '三個版本都必須是各自完整、可以單獨傳送的一則回覆，每則回覆 2 到 5 句，不要加稱謂佔位符號（例如【姓名】）。' +
+      '一律使用繁體中文，不可出現簡體字。請只輸出 JSON，格式為 {"replies":["版本一","版本二","版本三"]}，三個版本要有明顯不同的寫法。';
     var user = '情境：' + val('scene') + '\n語氣：' + val('tone') + '\n' +
       (customer ? '客人說：' + customer + '\n' : '') + '我想回的意思：' + intent;
 
@@ -159,7 +164,7 @@ details input{width:100%;font:inherit;padding:8px 10px;border-radius:10px;border
     fetch(location.pathname, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: model || undefined, temperature: 0.7, max_tokens: 900,
+      body: JSON.stringify({ model: model, temperature: 0.7, max_tokens: 900,
         messages: [{ role: 'system', content: sys }, { role: 'user', content: user }] })
     }).then(function(r){ return r.json().catch(function(){ return { error: '伺服器回傳格式錯誤（HTTP ' + r.status + '）' }; }); })
       .then(function(d){
@@ -168,8 +173,8 @@ details input{width:100%;font:inherit;padding:8px 10px;border-radius:10px;border
           throw new Error(msg);
         }
         var text = d && d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content;
-        if (!text) throw new Error('模型沒有回傳內容，請再按一次，或在進階設定換一個模型。');
-        render(parseReplies(text));
+        if (!text) throw new Error('模型沒有回傳內容，請再按一次，或換一個模型試試。');
+        render(parseReplies(text), d.model);
       })
       .catch(function(e){ out.innerHTML = '<p class="err">轉譯失敗：' + esc(e.message) + '</p>'; })
       .then(function(){ btn.disabled = false; btn.textContent = '轉成暖心回覆'; });
@@ -178,6 +183,16 @@ details input{width:100%;font:inherit;padding:8px 10px;border-radius:10px;border
 </script>
 </body>
 </html>`;
+
+// 只接受 :free 模型；不合規就改用預設
+function pickModel(requested, env) {
+  if (typeof requested === 'string' && requested.endsWith(':free')) return requested;
+  const d = env && env.DEFAULT_MODEL;
+  return typeof d === 'string' && d.endsWith(':free') ? d : DEFAULT_MODEL;
+}
+function fallbackList(first) {
+  return [first, ...FREE_MODELS.map(m => m.id).filter(id => id !== first)].slice(0, 3);
+}
 
 export default {
   async fetch(request, env) {
@@ -196,9 +211,10 @@ export default {
     if (request.method === 'GET') {
       const url = new URL(request.url);
       if (url.pathname === '/health') {
-        return json({ ok: true, hasKey: Boolean(env.OPENROUTER_API_KEY), model: env.DEFAULT_MODEL || DEFAULT_MODEL });
+        return json({ ok: true, hasKey: Boolean(env.OPENROUTER_API_KEY), defaultModel: pickModel(env.DEFAULT_MODEL, env), models: FREE_MODELS });
       }
-      return new Response(PAGE, { headers: { ...cors, 'Content-Type': 'text/html; charset=utf-8' } });
+      const options = FREE_MODELS.map(m => '<option value="' + m.id + '">' + m.label + '</option>').join('');
+      return new Response(PAGE.replace('__MODEL_OPTIONS__', options), { headers: { ...cors, 'Content-Type': 'text/html; charset=utf-8' } });
     }
 
     if (request.method !== 'POST') {
@@ -233,7 +249,8 @@ export default {
           'X-Title': 'Emotion JEV Translator',
         },
         body: JSON.stringify({
-          model: body.model || env.DEFAULT_MODEL || DEFAULT_MODEL,
+          // 選定的模型排第一，其餘免費模型當備援（遇到忙碌 429 時 OpenRouter 會自動改用下一個）
+          models: fallbackList(pickModel(body.model, env)),
           messages: body.messages,
           temperature: body.temperature ?? 0.3,
           max_tokens: Math.min(Number(body.max_tokens) || 800, MAX_TOKENS_CAP),

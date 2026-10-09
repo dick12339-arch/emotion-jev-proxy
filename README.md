@@ -29,7 +29,12 @@ npx wrangler secret put OPENROUTER_API_KEY
 - 模式B (測試)：前端 POST body 帶 `apiKey`（僅在 Worker 沒設環境變數時使用）
 
 ## 選用環境變數
-- `DEFAULT_MODEL`：前端沒傳 `model` 時使用的模型 ID，未設定則用 `openrouter/auto`
+- `DEFAULT_MODEL`：預設模型 ID，必須是 `:free` 結尾的免費模型，未設定則用 `src/index.js` 裡 `FREE_MODELS` 的第一個
+
+## 免費模型
+- 只允許 `:free` 模型，前端傳其他模型會被改成預設，不會產生費用
+- 可選模型清單在 `src/index.js` 的 `FREE_MODELS`，改這裡就會同步更新頁面下拉選單
+- 選定模型忙碌時，OpenRouter 會自動改用清單中的下一個免費模型
 
 ## POST body 格式
 ```json
