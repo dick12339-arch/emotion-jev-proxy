@@ -18,7 +18,10 @@ npx wrangler deploy
 npx wrangler secret put OPENROUTER_API_KEY
 ```
 
-## 前端怎麼用
+## 直接使用
+打開 Worker 網址就是轉譯器操作頁面；`/health` 可檢查 Key 是否已設定。
+
+## 其他前端怎麼用
 把部署後的網址 `https://emotion-jev-proxy.xxx.workers.dev` 貼回轉譯器的 **代理模式 URL** 欄位。
 
 支援兩種模式：
