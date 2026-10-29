@@ -6,8 +6,11 @@
 // GET  /health      → 檢查 Key、模型與版本
 
 // ── 版本資訊（每次更新都要同步改這裡）──
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 const CHANGELOG = [
+  { v: '1.2.0', date: '2026-10-29', notes: [
+    '只限台灣 IP 使用：國外連線顯示「僅限台灣地區使用」；放行名單與開關在 Roman OS 管理後台「設定 → 國外 IP 封鎖」',
+  ] },
   { v: '1.1.0', date: '2026-10-09', notes: [
     '新增「客服草稿窗」/pad：打字停頓約 1.5 秒自動檢查邏輯，給評分、問題點、該先問客人的事與建議改寫',
     '新增 /api/review 檢查 API（可給其他工具呼叫）',
@@ -541,6 +544,32 @@ function renderPage(tpl) {
   return tpl.replace('__MODEL_OPTIONS__', options).replace('__VER_CSS__', VER_CSS).replace('__VERSION_INFO__', versionInfoHtml());
 }
 
+// ── 國外 IP 封鎖（設定在 Roman OS 管理後台「設定 → 國外 IP 封鎖」）──
+// 台灣 IP 直接放行；其他國家才去問 Roman OS 這個 IP 是否在放行名單（或封鎖已關閉），結果快取 60 秒
+// 問不到 Roman OS 時一律擋下（寧可多擋）
+const GEO_API = 'https://roman-os.pages.dev/api/public/geo';
+const geoCache = new Map();
+async function geoBlocked(request) {
+  const country = String((request.cf && request.cf.country) || '').toUpperCase();
+  if (country === 'TW') return false;
+  const ip = request.headers.get('CF-Connecting-IP') || '';
+  const hit = geoCache.get(ip);
+  if (hit && Date.now() - hit.at < 60000) return !hit.allow;
+  let allow = false;
+  try {
+    const r = await fetch(GEO_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ip }) });
+    if (r.ok) allow = !!(await r.json()).allow;
+  } catch (e) { console.error('geo check', e); }
+  if (geoCache.size > 2000) geoCache.clear();
+  geoCache.set(ip, { at: Date.now(), allow });
+  return !allow;
+}
+function geoBlockedResponse(isApi, cors) {
+  cors = cors || {};
+  if (isApi) return new Response(JSON.stringify({ ok: false, reason: 'geo', error: '僅限台灣地區使用' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
+  return new Response('<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>僅限台灣地區使用</title><style>html,body{margin:0;height:100%;background:#14110d;color:#efe6d4;font-family:-apple-system,"PingFang TC","Noto Sans TC",sans-serif}.w{min-height:100%;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;text-align:center}.c{max-width:420px;width:100%;border:1px solid rgba(201,160,62,.35);border-radius:18px;padding:32px 24px;background:rgba(201,160,62,.06)}h1{font-size:20px;margin:14px 0 8px;color:#e8c46a}p{margin:0;color:#b9ad97;font-size:14px;line-height:1.7}</style></head><body><div class="w"><div class="c"><div style="font-size:42px">🌏</div><h1>僅限台灣地區使用</h1><p>此服務只開放台灣網路連線。<br>如果你人在台灣，請關閉 VPN 後再試一次。</p></div></div></body></html>', { status: 403, headers: { ...cors, 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
+}
+
 export default {
   async fetch(request, env) {
     const cors = {
@@ -553,6 +582,9 @@ export default {
     const html = page => new Response(renderPage(page), { headers: { ...cors, 'Content-Type': 'text/html; charset=utf-8' } });
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/+$/, '') || '/';
+
+    // 國外 IP 一律擋（Roman OS 管理後台可放行特定 IP 或暫時關閉）
+    if (await geoBlocked(request)) return geoBlockedResponse(request.method !== 'GET' || path === '/health', cors);
 
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: cors });
